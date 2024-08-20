@@ -19,7 +19,6 @@ namespace FaustBot.Services
             Program.StopBot();
         }
 
-        [RequireOwner]
         [SlashCommand("ping", "Ping the bot.")]
         public async Task Ping()
         {
