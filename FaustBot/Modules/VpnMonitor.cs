@@ -74,7 +74,8 @@ namespace FaustBot.Services
                 .ToList();
 
             bool isOnlySecureNAT = usernameAndCreatedTimePairs.Count == 1 &&
-                                   usernameAndCreatedTimePairs[0].Username.Equals("SecureNAT", StringComparison.OrdinalIgnoreCase);
+                                   (usernameAndCreatedTimePairs[0].Username.Equals("SecureNAT", StringComparison.OrdinalIgnoreCase) ||
+                                    usernameAndCreatedTimePairs[0].Username.Equals("Local Bridge", StringComparison.OrdinalIgnoreCase));
 
             string output;
             if (isOnlySecureNAT)
@@ -89,7 +90,7 @@ namespace FaustBot.Services
                 output = string.Join(Environment.NewLine,
                     usernameAndCreatedTimePairs.Select(pair =>
                     {
-                        if (pair.Username.Equals("SecureNAT", StringComparison.OrdinalIgnoreCase))
+                        if (pair.Username.Equals("SecureNAT", StringComparison.OrdinalIgnoreCase) || pair.Username.Equals("Local Bridge", StringComparison.OrdinalIgnoreCase))
                         {
                             TimeZoneInfo pstZone = TimeZoneInfo.FindSystemTimeZoneById("Pacific Standard Time");
                             DateTime pstTime = TimeZoneInfo.ConvertTimeFromUtc(pair.CreatedTime, pstZone);
@@ -130,7 +131,6 @@ namespace FaustBot.Services
                         LastCommTime = session.LastCommTime_dt
                     });
         }
-
 
         public async void CheckForUserChanges(VpnRpcEnumSession newVpnRpcEnumSession)
         {
@@ -257,5 +257,4 @@ namespace FaustBot.Services
         public DateTime CreatedTime { get; set; }
         public DateTime LastCommTime { get; set; }
     }
-
 }
