@@ -83,7 +83,7 @@ namespace FaustBot.Services
                 TimeZoneInfo pstZone = TimeZoneInfo.FindSystemTimeZoneById("Pacific Standard Time");
                 DateTime pstTime = TimeZoneInfo.ConvertTimeFromUtc(usernameAndCreatedTimePairs[0].CreatedTime, pstZone);
                 string humanReadableTime = pstTime.ToString("dddd, MMMM dd, h:mm:ss tt", CultureInfo.InvariantCulture);
-                output = $"The {hubName} hub has been online since {humanReadableTime} PST.\nNo users are currently connected.";
+                output = $"The {hubName} hub has been online since {humanReadableTime} PT.\nNo users are currently connected.";
             }
             else
             {
@@ -95,14 +95,14 @@ namespace FaustBot.Services
                             TimeZoneInfo pstZone = TimeZoneInfo.FindSystemTimeZoneById("Pacific Standard Time");
                             DateTime pstTime = TimeZoneInfo.ConvertTimeFromUtc(pair.CreatedTime, pstZone);
                             string humanReadableTime = pstTime.ToString("dddd, MMMM dd, h:mm:ss tt", CultureInfo.InvariantCulture);
-                            return $"The {hubName} hub has been online since {humanReadableTime} PST.";
+                            return $"The {hubName} hub has been online since {humanReadableTime} PT.";
                         }
                         else
                         {
                             TimeZoneInfo pstZone = TimeZoneInfo.FindSystemTimeZoneById("Pacific Standard Time");
                             DateTime pstTime = TimeZoneInfo.ConvertTimeFromUtc(pair.CreatedTime, pstZone);
                             string humanReadableTime = pstTime.ToString("dddd, MMMM dd, h:mm:ss tt", CultureInfo.InvariantCulture);
-                            return $"Username: {pair.Username}, Session Created: {humanReadableTime} PST";
+                            return $"Username: {pair.Username}, Session Created: {humanReadableTime} PT";
                         }
                     }));
             }
@@ -154,7 +154,7 @@ namespace FaustBot.Services
                 TimeZoneInfo pstZone = TimeZoneInfo.FindSystemTimeZoneById("Pacific Standard Time");
                 DateTime pstTime = TimeZoneInfo.ConvertTimeFromUtc(pair.Value.CreatedTime, pstZone);
                 string humanReadableTime = pstTime.ToString("dddd, MMMM dd, h:mm:ss tt", CultureInfo.InvariantCulture);
-                string message = $"User {pair.Key} has joined the {hubName} hub at {humanReadableTime} PST.";
+                string message = $"User {pair.Key} has joined the {hubName} hub at {humanReadableTime} PT.";
                 await Context.Client.GetGuild(guildId).GetTextChannel(channelId).SendMessageAsync(message);
                 Console.WriteLine(message);
             }
@@ -168,7 +168,7 @@ namespace FaustBot.Services
                 TimeZoneInfo pstZone = TimeZoneInfo.FindSystemTimeZoneById("Pacific Standard Time");
                 DateTime pstTime = TimeZoneInfo.ConvertTimeFromUtc(pair.Value.LastCommTime, pstZone);
                 string humanReadableTime = pstTime.ToString("dddd, MMMM dd, h:mm:ss tt", CultureInfo.InvariantCulture);
-                string message = $"User {pair.Key} has left the {hubName} hub. Last seen at {humanReadableTime} PST.";
+                string message = $"User {pair.Key} has left the {hubName} hub. Last seen at {humanReadableTime} PT.";
                 await Context.Client.GetGuild(guildId).GetTextChannel(channelId).SendMessageAsync(message);
                 Console.WriteLine(message);
             }
