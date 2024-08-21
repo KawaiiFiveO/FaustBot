@@ -1,7 +1,9 @@
-﻿using Discord.Interactions;
+﻿using Discord;
+using Discord.Interactions;
 using Microsoft.Extensions.Configuration;
 using SoftEther.VPNServerRpc;
 using System.Globalization;
+using System.Text;
 using System.Timers;
 
 namespace FaustBot.Services
@@ -14,19 +16,37 @@ namespace FaustBot.Services
         private static System.Timers.Timer countdownTimer;
 
         VpnServerRpc api;
-        string hubName;
+        //string hubName;
+        IConfigurationSection hubListConfig;
+        List<Hub> hubList = new List<Hub>();
+        List<Hub> prevHubList = new List<Hub>();
         ulong guildId;
-        ulong channelId;
-        private static Dictionary<string, UserSessionInfo> _currentUsernames = new Dictionary<string, UserSessionInfo>();
+        ulong logChannelId;
+        int delay;
+        bool enableLogs;
+        bool mentionUserIds; // TODO
+        List<String> ignoreList; // TODO
+        ulong embedChannelId;
+        //private static Dictionary<string, UserSessionInfo> _currentUsernames = new Dictionary<string, UserSessionInfo>();
 
         public VpnMonitor(CommandHandler handler, IServiceProvider services, IConfiguration config)
         {
             _handler = handler;
             var serverIp = config["VpnServerIp"];
             var serverPassword = config["VpnServerPassword"];
-            hubName = config["VpnHubName"];
-            guildId = ulong.Parse(config["TestGuildId"]);
-            channelId = ulong.Parse(config["TestChannelId"]);
+            //hubName = config["VpnHubName"];
+            hubListConfig = config.GetSection("VpnHubList");
+            for (int i = 0; i < hubListConfig.GetChildren().Count(); i++)
+            {
+                string hubName = config[$"VpnHubList:{i}"];
+                hubList.Add(new Hub(hubName));
+            }
+            prevHubList = hubList;
+            guildId = ulong.Parse(config["GuildId"]);
+            logChannelId = ulong.Parse(config["LogChannelId"]);
+            embedChannelId = ulong.Parse(config["EmbedChannelId"]);
+            delay = int.Parse(config["UpdateDelay"]) * 1000;
+            enableLogs = bool.Parse(config["EnableLogs"]);
             api = new VpnServerRpc(serverIp, 443, serverPassword, "");
         }
 
@@ -40,10 +60,15 @@ namespace FaustBot.Services
                 return;
             }
             Console.WriteLine("Starting VPN monitoring service.");
-            VpnRpcEnumSession out_rpc_enum_session =Get_EnumSession();
-            SaveUsernames(out_rpc_enum_session);
+            //VpnRpcEnumSession out_rpc_enum_session = Get_EnumSession();
+            //if (enableLogs)
+            //{
+            //    SaveUsernames(out_rpc_enum_session);
+            //}
+            UpdateHubList();
+            await UpdateEmbed();
             SetTimer();
-            await RespondAsync("VPN monitoring service started. Printing logs to channel.");
+            await RespondAsync("VPN monitoring service started.");
         }
 
         [RequireOwner]
@@ -61,10 +86,10 @@ namespace FaustBot.Services
         }
 
         [SlashCommand("list", "List current VPN sessions.")]
-        public async Task ListVpnSessions()
+        public async Task ListVpnSessions(string hubName)
         {
             Console.WriteLine("Listing current VPN sessions...");
-            VpnRpcEnumSession out_rpc_enum_session = Get_EnumSession();
+            VpnRpcEnumSession out_rpc_enum_session = Get_EnumSession(hubName);
             var usernameAndCreatedTimePairs = out_rpc_enum_session.SessionList
                 .Select(session => new
                 {
@@ -110,9 +135,9 @@ namespace FaustBot.Services
         }
 
         [SlashCommand("status", "Print VPN hub status.")]
-        public async Task VpnStatus()
+        public async Task VpnStatus(string hubName)
         {
-            VpnRpcHubStatus out_rpc_hub_status = Test_GetHubStatus();
+            VpnRpcHubStatus out_rpc_hub_status = Test_GetHubStatus(hubName);
             bool onlineStatus = out_rpc_hub_status.Online_bool;
             string serverStatus = onlineStatus ? "online" : "offline";
             string message = $"The {hubName} hub is currently {serverStatus}.";
@@ -120,60 +145,158 @@ namespace FaustBot.Services
             await RespondAsync(message);
         }
 
-        public static void SaveUsernames(VpnRpcEnumSession vpnRpcEnumSession)
+        public void UpdateHubList()
         {
-            _currentUsernames = vpnRpcEnumSession.SessionList
-                .ToDictionary(
-                    session => session.Username_str,
-                    session => new UserSessionInfo
+            prevHubList = hubList;
+            foreach (Hub hub in hubList)
+            {
+                hub.ClearAllUsernames();
+                string hubName = hub.HubName;
+                bool hubStatus = Test_GetHubStatus(hubName).Online_bool;
+                hub.OnlineStatus = hubStatus;
+                VpnRpcEnumSession newVpnRpcEnumSession = Get_EnumSession(hubName);
+
+                foreach (var session in newVpnRpcEnumSession.SessionList)
+                {
+                    UserSessionInfo userSessionInfo = new UserSessionInfo
                     {
                         CreatedTime = session.CreatedTime_dt,
                         LastCommTime = session.LastCommTime_dt
-                    });
+                    };
+
+                    hub.AddUsername(session.Username_str, userSessionInfo);
+                }
+            }
         }
 
-        public async void CheckForUserChanges(VpnRpcEnumSession newVpnRpcEnumSession)
+        public async Task CheckForUserChanges()
         {
             Console.WriteLine("Checking for user changes...");
+            
+            foreach (Hub hub in hubList)
+            {
+                string hubName = hub.HubName;
 
-            var newUsernames = newVpnRpcEnumSession.SessionList
-                .ToDictionary(
-                    session => session.Username_str,
-                    session => new UserSessionInfo
+                //VpnRpcEnumSession newVpnRpcEnumSession = Get_EnumSession(hubName);
+                //var newUsernames = newVpnRpcEnumSession.SessionList
+                //    .ToDictionary(
+                //        session => session.Username_str,
+                //        session => new UserSessionInfo
+                //   {
+                //            CreatedTime = session.CreatedTime_dt,
+                //            LastCommTime = session.LastCommTime_dt
+                //        });
+
+                //var joinedUsers = newUsernames
+                //    .Where(pair => !_currentUsernames.ContainsKey(pair.Key))
+                //    .ToList();
+
+                var currentUsers = hub._userSessions;
+
+                var prevUsers = prevHubList.Find(hub => hub.HubName == hubName)._userSessions;
+
+                var joinedUsers = currentUsers.Where(pair => !prevUsers.ContainsKey(pair.Key)).ToList();
+
+                foreach (var pair in joinedUsers)
+                {
+                    TimeZoneInfo pstZone = TimeZoneInfo.FindSystemTimeZoneById("Pacific Standard Time");
+                    DateTime pstTime = TimeZoneInfo.ConvertTimeFromUtc(pair.Value.CreatedTime, pstZone);
+                    string humanReadableTime = pstTime.ToString("dddd, MMMM dd, h:mm:ss tt", CultureInfo.InvariantCulture);
+                    string message = $"User {pair.Key} has joined the {hubName} hub at {humanReadableTime} PT.";
+                    await Context.Client.GetGuild(guildId).GetTextChannel(logChannelId).SendMessageAsync(message);
+                    Console.WriteLine(message);
+                }
+
+                //var leftUsers = _currentUsernames
+                //    .Where(pair => !newUsernames.ContainsKey(pair.Key))
+                //    .ToList();
+
+                var leftUsers = prevUsers.Where(pair => !currentUsers.ContainsKey(pair.Key)).ToList();
+
+                foreach (var pair in leftUsers)
+                {
+                    TimeZoneInfo pstZone = TimeZoneInfo.FindSystemTimeZoneById("Pacific Standard Time");
+                    DateTime pstTime = TimeZoneInfo.ConvertTimeFromUtc(pair.Value.LastCommTime, pstZone);
+                    string humanReadableTime = pstTime.ToString("dddd, MMMM dd, h:mm:ss tt", CultureInfo.InvariantCulture);
+                    string message = $"User {pair.Key} has left the {hubName} hub. Last seen at {humanReadableTime} PT.";
+                    await Context.Client.GetGuild(guildId).GetTextChannel(logChannelId).SendMessageAsync(message);
+                    Console.WriteLine(message);
+                }
+                //_currentUsernames = newUsernames;
+            }
+        }
+
+
+        public async Task UpdateEmbed()
+        {
+            //List<Hub> hubList = new List<Hub>();
+
+            var embed = new EmbedBuilder
+            {
+                // Embed property can be set within object initializer
+                Title = "**Faust VPN Network Status**\nLA VPN",
+            };
+
+            foreach (Hub hub in hubList)
+            {
+                string hubName = hub.HubName;
+                string serverStatus = hub.OnlineStatus ? "[Online]" : "[Offline]";
+                var usernames = hub.Usernames;
+
+                StringBuilder userList = new StringBuilder("", 100);
+
+                if (hub.OnlineStatus)
+                {
+                    foreach (var username in usernames)
                     {
-                        CreatedTime = session.CreatedTime_dt,
-                        LastCommTime = session.LastCommTime_dt
-                    });
+                        userList.Append(username);
+                        userList.Append('\n');
+                    }
+                    if (usernames.Count == 0)
+                    {
+                        userList.Append("No Players");
+                    }
+                }
+                else
+                {
+                    userList.Append("Hub Offline");
+                }
 
-            var joinedUsers = newUsernames
-                .Where(pair => !_currentUsernames.ContainsKey(pair.Key))
-                .ToList();
 
-            foreach (var pair in joinedUsers)
-            {
-                TimeZoneInfo pstZone = TimeZoneInfo.FindSystemTimeZoneById("Pacific Standard Time");
-                DateTime pstTime = TimeZoneInfo.ConvertTimeFromUtc(pair.Value.CreatedTime, pstZone);
-                string humanReadableTime = pstTime.ToString("dddd, MMMM dd, h:mm:ss tt", CultureInfo.InvariantCulture);
-                string message = $"User {pair.Key} has joined the {hubName} hub at {humanReadableTime} PT.";
-                await Context.Client.GetGuild(guildId).GetTextChannel(channelId).SendMessageAsync(message);
-                Console.WriteLine(message);
+                StringBuilder fieldName = new StringBuilder("", 50);
+                fieldName.Append(serverStatus);
+                fieldName.Append(' ');
+                fieldName.Append(hubName);
+                fieldName.Append(" - ");
+                fieldName.Append(usernames.Count().ToString());
+                fieldName.Append("/4");
+                embed.AddField(fieldName.ToString(), userList.ToString());
             }
 
-            var leftUsers = _currentUsernames
-                .Where(pair => !newUsernames.ContainsKey(pair.Key))
-                .ToList();
+            // Or with methods
+            //embed.AddField("Field title",
+            //    "Field value. I also support [hyperlink markdown](https://example.com)!")
+            //    .WithAuthor(Context.Client.CurrentUser)
+            //    .WithFooter(footer => footer.Text = "I am a footer.")
+            //    .WithColor(Color.Blue)
+            //    .WithTitle("I overwrote \"Hello world!\"")
+            //    .WithDescription("I am a description.")
+            //    .WithUrl("https://example.com")
+            //    .WithCurrentTimestamp();
 
-            foreach (var pair in leftUsers)
-            {
-                TimeZoneInfo pstZone = TimeZoneInfo.FindSystemTimeZoneById("Pacific Standard Time");
-                DateTime pstTime = TimeZoneInfo.ConvertTimeFromUtc(pair.Value.LastCommTime, pstZone);
-                string humanReadableTime = pstTime.ToString("dddd, MMMM dd, h:mm:ss tt", CultureInfo.InvariantCulture);
-                string message = $"User {pair.Key} has left the {hubName} hub. Last seen at {humanReadableTime} PT.";
-                await Context.Client.GetGuild(guildId).GetTextChannel(channelId).SendMessageAsync(message);
-                Console.WriteLine(message);
-            }
+            embed.WithColor(Color.Green);
+            embed.WithCurrentTimestamp();
+            embed.WithFooter(footer => footer.Text = "VPN Bot will auto-update this message every minute");
 
-            _currentUsernames = newUsernames;
+            Console.WriteLine($"Sending embed to guild {guildId}, channel {embedChannelId}");
+
+            await Context.Client.GetGuild(guildId).GetTextChannel(embedChannelId).SendMessageAsync(embed: embed.Build());
+        }
+
+        public async Task DeleteEmbed()
+        {
+            var messageToDelete = await Context.Client.GetGuild(guildId).GetTextChannel(embedChannelId).GetMessagesAsync(limit: 1).FlattenAsync();
+            await Context.Client.GetGuild(guildId).GetTextChannel(embedChannelId).DeleteMessagesAsync(messageToDelete);
         }
 
 
@@ -181,7 +304,7 @@ namespace FaustBot.Services
         {
             countdownTimer = new System.Timers.Timer
             {
-                Interval = 30000, // 30 second interval
+                Interval = delay,
                 AutoReset = true,
                 Enabled = true
             };
@@ -195,17 +318,25 @@ namespace FaustBot.Services
             countdownTimer = null;
         }
 
-        private void OnTimedEvent(object source, ElapsedEventArgs e)
+        private async void OnTimedEvent(object source, ElapsedEventArgs e)
         {
-            VpnRpcEnumSession in_rpc_enum_session = new VpnRpcEnumSession()
+            //VpnRpcEnumSession in_rpc_enum_session = new VpnRpcEnumSession()
+            //{
+            //    HubName_str = hubName,
+            //};
+            //VpnRpcEnumSession out_rpc_enum_session = api.EnumSession(in_rpc_enum_session);
+
+            if (enableLogs)
             {
-                HubName_str = hubName,
-            };
-            VpnRpcEnumSession out_rpc_enum_session = api.EnumSession(in_rpc_enum_session);
-            CheckForUserChanges(out_rpc_enum_session);
+                await CheckForUserChanges();
+            }
+
+            UpdateHubList();
+            await DeleteEmbed();
+            await UpdateEmbed();
         }
 
-        public VpnRpcEnumSession Get_EnumSession()
+        public VpnRpcEnumSession Get_EnumSession(string hubName)
         {
             //Console.WriteLine("Begin: Test_EnumSession");
 
@@ -224,7 +355,7 @@ namespace FaustBot.Services
             return out_rpc_enum_session;
         }
 
-        public VpnRpcHubStatus Test_GetHubStatus()
+        public VpnRpcHubStatus Test_GetHubStatus(string hubName)
         {
             //Console.WriteLine("Begin: Test_GetHubStatus");
 
@@ -256,5 +387,38 @@ namespace FaustBot.Services
     {
         public DateTime CreatedTime { get; set; }
         public DateTime LastCommTime { get; set; }
+    }
+
+    public class Hub
+    {
+        public string HubName { get; set; }
+        public bool OnlineStatus { get; set; }
+        public Dictionary<string, UserSessionInfo> _userSessions;
+
+        // Constructor
+        public Hub(string hubName)
+        {
+            HubName = hubName;
+            OnlineStatus = false;
+            _userSessions = new Dictionary<string, UserSessionInfo>();
+        }
+
+        // Property to access usernames as a list
+        public List<string> Usernames => _userSessions.Keys.ToList();
+
+        // Method to add a username with session info
+        public void AddUsername(string username, UserSessionInfo session)
+        {
+            if (!string.IsNullOrEmpty(username) && !_userSessions.ContainsKey(username))
+            {
+                _userSessions.Add(username, session);
+            }
+        }
+
+        // Method to clear all usernames and their associated session info
+        public void ClearAllUsernames()
+        {
+            _userSessions.Clear();
+        }
     }
 }

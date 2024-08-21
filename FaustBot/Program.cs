@@ -26,7 +26,7 @@ namespace FaustBot
 
             // build the configuration and assign to _config          
             _config = _builder.Build();
-            _testGuildId = ulong.Parse(_config["TestGuildId"]);
+            _testGuildId = ulong.Parse(_config["GuildId"]);
         }
 
         public async Task MainAsync()
