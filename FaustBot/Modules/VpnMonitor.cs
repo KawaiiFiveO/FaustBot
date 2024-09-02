@@ -18,15 +18,24 @@ namespace FaustBot.Services
         VpnServerRpc api;
         //string hubName;
         IConfigurationSection hubListConfig;
+        IConfigurationSection ignoreListConfig;
         List<Hub> hubList = new List<Hub>();
         List<Hub> prevHubList = new List<Hub>();
         ulong guildId;
         ulong logChannelId;
         int delay;
         bool enableLogs;
-        bool mentionUserIds; // TODO
-        List<String> ignoreList; // TODO
         ulong embedChannelId;
+        List<string> ignoreList = new List<string>();
+        string terminalName;
+        string selectedTimeZone;
+        string titleText;
+        string footerText;
+        bool mentionUserIds;
+        bool useCustomEmojis;
+        string hubOnlineEmoji;
+        string hubOfflineEmoji;
+
         //private static Dictionary<string, UserSessionInfo> _currentUsernames = new Dictionary<string, UserSessionInfo>();
 
         public VpnMonitor(CommandHandler handler, IServiceProvider services, IConfiguration config)
@@ -47,6 +56,25 @@ namespace FaustBot.Services
             embedChannelId = ulong.Parse(config["EmbedChannelId"]);
             delay = int.Parse(config["UpdateDelay"]) * 1000;
             enableLogs = bool.Parse(config["EnableLogs"]);
+
+            ignoreListConfig = config.GetSection("IgnoreList");
+            for (int i = 0; i < ignoreListConfig.GetChildren().Count(); i++)
+            {
+                string ignoreItem = config[$"IgnoreList:{i}"];
+                ignoreList.Add(ignoreItem);
+            }
+
+            terminalName = config["TerminalName"];
+            selectedTimeZone = config["TimeZone"];
+            titleText = config["TitleText"];
+            footerText = config["FooterText"];
+            mentionUserIds = bool.Parse(config["MentionUserIds"]);
+            useCustomEmojis = bool.Parse(config["CustomEmojis"]);
+            if (useCustomEmojis)
+            {
+                hubOnlineEmoji = config["HubOnlineEmoji"];
+                hubOfflineEmoji = config["HubOfflineEmoji"];
+            }
             api = new VpnServerRpc(serverIp, 443, serverPassword, "");
         }
 
@@ -82,15 +110,18 @@ namespace FaustBot.Services
             }
             Console.WriteLine("Stopping VPN monitoring service.");
             DisposeTimer();
+            await DeleteEmbed();
             await RespondAsync("VPN monitoring service stopped.");
         }
 
-        [SlashCommand("list", "List current VPN sessions.")]
+        [SlashCommand("list", "List current VPN sessions on one hub.")]
         public async Task ListVpnSessions(string hubName)
         {
             Console.WriteLine("Listing current VPN sessions...");
             VpnRpcEnumSession out_rpc_enum_session = Get_EnumSession(hubName);
+
             var usernameAndCreatedTimePairs = out_rpc_enum_session.SessionList
+                .Where(session => !ignoreList.Contains(session.Username_str, StringComparer.OrdinalIgnoreCase))
                 .Select(session => new
                 {
                     Username = session.Username_str,
@@ -98,39 +129,24 @@ namespace FaustBot.Services
                 })
                 .ToList();
 
-            bool isOnlySecureNAT = usernameAndCreatedTimePairs.Count == 1 &&
-                                   (usernameAndCreatedTimePairs[0].Username.Equals("SecureNAT", StringComparison.OrdinalIgnoreCase) ||
-                                    usernameAndCreatedTimePairs[0].Username.Equals("Local Bridge", StringComparison.OrdinalIgnoreCase));
-
             string output;
-            if (isOnlySecureNAT)
+            TimeZoneInfo pstZone = TimeZoneInfo.FindSystemTimeZoneById(selectedTimeZone);
+
+            if (usernameAndCreatedTimePairs.Count == 0)
             {
-                TimeZoneInfo pstZone = TimeZoneInfo.FindSystemTimeZoneById("Pacific Standard Time");
-                DateTime pstTime = TimeZoneInfo.ConvertTimeFromUtc(usernameAndCreatedTimePairs[0].CreatedTime, pstZone);
-                string humanReadableTime = pstTime.ToString("dddd, MMMM dd, h:mm:ss tt", CultureInfo.InvariantCulture);
-                output = $"The {hubName} hub has been online since {humanReadableTime} PT.\nNo users are currently connected.";
+                output = "No users are currently connected.";
             }
             else
             {
                 output = string.Join(Environment.NewLine,
                     usernameAndCreatedTimePairs.Select(pair =>
                     {
-                        if (pair.Username.Equals("SecureNAT", StringComparison.OrdinalIgnoreCase) || pair.Username.Equals("Local Bridge", StringComparison.OrdinalIgnoreCase))
-                        {
-                            TimeZoneInfo pstZone = TimeZoneInfo.FindSystemTimeZoneById("Pacific Standard Time");
-                            DateTime pstTime = TimeZoneInfo.ConvertTimeFromUtc(pair.CreatedTime, pstZone);
-                            string humanReadableTime = pstTime.ToString("dddd, MMMM dd, h:mm:ss tt", CultureInfo.InvariantCulture);
-                            return $"The {hubName} hub has been online since {humanReadableTime} PT.";
-                        }
-                        else
-                        {
-                            TimeZoneInfo pstZone = TimeZoneInfo.FindSystemTimeZoneById("Pacific Standard Time");
-                            DateTime pstTime = TimeZoneInfo.ConvertTimeFromUtc(pair.CreatedTime, pstZone);
-                            string humanReadableTime = pstTime.ToString("dddd, MMMM dd, h:mm:ss tt", CultureInfo.InvariantCulture);
-                            return $"Username: {pair.Username}, Session Created: {humanReadableTime} PT";
-                        }
+                        DateTime pstTime = TimeZoneInfo.ConvertTimeFromUtc(pair.CreatedTime, pstZone);
+                        string humanReadableTime = pstTime.ToString("dddd, MMMM dd, h:mm:ss tt", CultureInfo.InvariantCulture);
+                        return $"Username: {pair.Username}, Session Created: {humanReadableTime}";
                     }));
             }
+
             await RespondAsync(output);
         }
 
@@ -234,13 +250,21 @@ namespace FaustBot.Services
             var embed = new EmbedBuilder
             {
                 // Embed property can be set within object initializer
-                Title = "**Faust VPN Network Status**\nLA VPN",
+                Title = titleText,
             };
 
             foreach (Hub hub in hubList)
             {
                 string hubName = hub.HubName;
-                string serverStatus = hub.OnlineStatus ? "[Online]" : "[Offline]";
+                string serverStatus;
+                if (useCustomEmojis)
+                {
+                    serverStatus = hub.OnlineStatus ? hubOnlineEmoji : hubOfflineEmoji;
+                }
+                else
+                {
+                    serverStatus = hub.OnlineStatus ? "[Online]" : "[Offline]";
+                }
                 var usernames = hub.Usernames;
 
                 StringBuilder userList = new StringBuilder("", 100);
@@ -249,10 +273,24 @@ namespace FaustBot.Services
                 {
                     foreach (var username in usernames)
                     {
-                        userList.Append(username);
-                        userList.Append('\n');
+                        if (!ignoreList.Contains(username, StringComparer.OrdinalIgnoreCase))
+                        {
+                            if (mentionUserIds)
+                            {
+                                userList.Append("<@");
+                                userList.Append(username);
+                                userList.Append('>');
+                                userList.Append('\n');
+                            }
+                            else
+                            {
+                                userList.Append(username);
+                                userList.Append('\n');
+                            }
+
+                        }
                     }
-                    if (usernames.Count == 0)
+                    if (usernames.Count == 0 || userList.Length == 0)
                     {
                         userList.Append("No Players");
                     }
@@ -262,14 +300,17 @@ namespace FaustBot.Services
                     userList.Append("Hub Offline");
                 }
 
-
                 StringBuilder fieldName = new StringBuilder("", 50);
                 fieldName.Append(serverStatus);
                 fieldName.Append(' ');
                 fieldName.Append(hubName);
-                fieldName.Append(" - ");
-                fieldName.Append(usernames.Count().ToString());
-                fieldName.Append("/4");
+                fieldName.Append(": ");
+                fieldName.Append(usernames.Where(username => !ignoreList.Contains(username, StringComparer.OrdinalIgnoreCase)).Count().ToString());
+                fieldName.Append("/4 Players");
+                if (usernames.Contains(terminalName, StringComparer.OrdinalIgnoreCase))
+                {
+                    fieldName.Append(" :regional_indicator_d::regional_indicator_t:");
+                }
                 embed.AddField(fieldName.ToString(), userList.ToString());
             }
 
@@ -286,7 +327,7 @@ namespace FaustBot.Services
 
             embed.WithColor(Color.Green);
             embed.WithCurrentTimestamp();
-            embed.WithFooter(footer => footer.Text = "VPN Bot will auto-update this message every minute");
+            embed.WithFooter(footer => footer.Text = footerText);
 
             Console.WriteLine($"Sending embed to guild {guildId}, channel {embedChannelId}");
 
