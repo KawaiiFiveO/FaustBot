@@ -29,6 +29,7 @@ namespace FaustBot.Services
         List<string> ignoreList = new List<string>();
         string terminalName;
         string selectedTimeZone;
+        bool displaySessionTime;
         string titleText;
         string footerText;
         bool mentionUserIds;
@@ -66,6 +67,7 @@ namespace FaustBot.Services
 
             terminalName = config["TerminalName"];
             selectedTimeZone = config["TimeZone"];
+            displaySessionTime = bool.Parse(config["DisplaySessionTime"]);
             titleText = config["TitleText"];
             footerText = config["FooterText"];
             mentionUserIds = bool.Parse(config["MentionUserIds"]);
@@ -93,10 +95,19 @@ namespace FaustBot.Services
             //{
             //    SaveUsernames(out_rpc_enum_session);
             //}
-            UpdateHubList();
-            await UpdateEmbed();
-            SetTimer();
-            await RespondAsync("VPN monitoring service started.");
+            try
+            {
+                UpdateHubList();
+                await UpdateEmbed();
+                SetTimer();
+                await RespondAsync("VPN monitoring service started.");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error: {ex.Message}");
+                Console.WriteLine($"Stack Trace: {ex.StackTrace}");
+                await RespondAsync("An error occurred. See console for details.");
+            }
         }
 
         [RequireOwner]
@@ -118,47 +129,64 @@ namespace FaustBot.Services
         public async Task ListVpnSessions(string hubName)
         {
             Console.WriteLine("Listing current VPN sessions...");
-            VpnRpcEnumSession out_rpc_enum_session = Get_EnumSession(hubName);
-
-            var usernameAndCreatedTimePairs = out_rpc_enum_session.SessionList
-                .Where(session => !ignoreList.Contains(session.Username_str, StringComparer.OrdinalIgnoreCase))
-                .Select(session => new
-                {
-                    Username = session.Username_str,
-                    CreatedTime = session.CreatedTime_dt
-                })
-                .ToList();
-
-            string output;
-            TimeZoneInfo pstZone = TimeZoneInfo.FindSystemTimeZoneById(selectedTimeZone);
-
-            if (usernameAndCreatedTimePairs.Count == 0)
+            try
             {
-                output = "No users are currently connected.";
-            }
-            else
-            {
-                output = string.Join(Environment.NewLine,
-                    usernameAndCreatedTimePairs.Select(pair =>
+                VpnRpcEnumSession out_rpc_enum_session = Get_EnumSession(hubName);
+
+                var usernameAndCreatedTimePairs = out_rpc_enum_session.SessionList
+                    .Where(session => !ignoreList.Contains(session.Username_str, StringComparer.OrdinalIgnoreCase))
+                    .Select(session => new
                     {
-                        DateTime pstTime = TimeZoneInfo.ConvertTimeFromUtc(pair.CreatedTime, pstZone);
-                        string humanReadableTime = pstTime.ToString("dddd, MMMM dd, h:mm:ss tt", CultureInfo.InvariantCulture);
-                        return $"Username: {pair.Username}, Session Created: {humanReadableTime}";
-                    }));
-            }
+                        Username = session.Username_str,
+                        CreatedTime = session.CreatedTime_dt
+                    })
+                    .ToList();
 
-            await RespondAsync(output);
+                string output;
+                TimeZoneInfo sessionTimeZone = TimeZoneInfo.FindSystemTimeZoneById(selectedTimeZone);
+
+                if (usernameAndCreatedTimePairs.Count == 0)
+                {
+                    output = "No users are currently connected.";
+                }
+                else
+                {
+                    output = string.Join(Environment.NewLine,
+                        usernameAndCreatedTimePairs.Select(pair =>
+                        {
+                            DateTime sessionTime = TimeZoneInfo.ConvertTimeFromUtc(pair.CreatedTime, sessionTimeZone);
+                            string humanReadableTime = sessionTime.ToString("dddd, MMMM dd, h:mm:ss tt", CultureInfo.InvariantCulture);
+                            return $"Username: {pair.Username}, Session Created: {humanReadableTime}";
+                        }));
+                }
+
+                await RespondAsync(output);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex.Message);
+                await RespondAsync("An error occurred. See console for details.");
+            }
         }
 
         [SlashCommand("status", "Print VPN hub status.")]
         public async Task VpnStatus(string hubName)
         {
-            VpnRpcHubStatus out_rpc_hub_status = Test_GetHubStatus(hubName);
-            bool onlineStatus = out_rpc_hub_status.Online_bool;
-            string serverStatus = onlineStatus ? "online" : "offline";
-            string message = $"The {hubName} hub is currently {serverStatus}.";
-            Console.WriteLine(message);
-            await RespondAsync(message);
+            try
+            {
+                VpnRpcHubStatus out_rpc_hub_status = Test_GetHubStatus(hubName);
+                bool onlineStatus = out_rpc_hub_status.Online_bool;
+                string serverStatus = onlineStatus ? "online" : "offline";
+                string message = $"The {hubName} hub is currently {serverStatus}.";
+                Console.WriteLine(message);
+                await RespondAsync(message);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error: {ex.Message}");
+                Console.WriteLine($"Stack Trace: {ex.StackTrace}");
+                await RespondAsync("An error occurred. See console for details.");
+            }
         }
 
         public void UpdateHubList()
@@ -215,9 +243,9 @@ namespace FaustBot.Services
 
                 foreach (var pair in joinedUsers)
                 {
-                    TimeZoneInfo pstZone = TimeZoneInfo.FindSystemTimeZoneById("Pacific Standard Time");
-                    DateTime pstTime = TimeZoneInfo.ConvertTimeFromUtc(pair.Value.CreatedTime, pstZone);
-                    string humanReadableTime = pstTime.ToString("dddd, MMMM dd, h:mm:ss tt", CultureInfo.InvariantCulture);
+                    TimeZoneInfo sessionTimeZone = TimeZoneInfo.FindSystemTimeZoneById(selectedTimeZone);
+                    DateTime sessionTime = TimeZoneInfo.ConvertTimeFromUtc(pair.Value.CreatedTime, sessionTimeZone);
+                    string humanReadableTime = sessionTime.ToString("dddd, MMMM dd, h:mm:ss tt", CultureInfo.InvariantCulture);
                     string message = $"User {pair.Key} has joined the {hubName} hub at {humanReadableTime} PT.";
                     await Context.Client.GetGuild(guildId).GetTextChannel(logChannelId).SendMessageAsync(message);
                     Console.WriteLine(message);
@@ -231,9 +259,9 @@ namespace FaustBot.Services
 
                 foreach (var pair in leftUsers)
                 {
-                    TimeZoneInfo pstZone = TimeZoneInfo.FindSystemTimeZoneById("Pacific Standard Time");
-                    DateTime pstTime = TimeZoneInfo.ConvertTimeFromUtc(pair.Value.LastCommTime, pstZone);
-                    string humanReadableTime = pstTime.ToString("dddd, MMMM dd, h:mm:ss tt", CultureInfo.InvariantCulture);
+                    TimeZoneInfo sessionTimeZone = TimeZoneInfo.FindSystemTimeZoneById(selectedTimeZone);
+                    DateTime sessionTime = TimeZoneInfo.ConvertTimeFromUtc(pair.Value.LastCommTime, sessionTimeZone);
+                    string humanReadableTime = sessionTime.ToString("dddd, MMMM dd, h:mm:ss tt", CultureInfo.InvariantCulture);
                     string message = $"User {pair.Key} has left the {hubName} hub. Last seen at {humanReadableTime} PT.";
                     await Context.Client.GetGuild(guildId).GetTextChannel(logChannelId).SendMessageAsync(message);
                     Console.WriteLine(message);
@@ -267,7 +295,7 @@ namespace FaustBot.Services
                 }
                 var usernames = hub.Usernames;
 
-                StringBuilder userList = new StringBuilder("", 100);
+                StringBuilder userList = new StringBuilder("", 200);
 
                 if (hub.OnlineStatus)
                 {
@@ -280,14 +308,24 @@ namespace FaustBot.Services
                                 userList.Append("<@");
                                 userList.Append(username);
                                 userList.Append('>');
-                                userList.Append('\n');
                             }
                             else
                             {
                                 userList.Append(username);
-                                userList.Append('\n');
-                            }
 
+                            }
+                            if (displaySessionTime)
+                            {
+                                DateTime utcDate = DateTime.UtcNow;
+                                DateTime sessionTime = hub._userSessions[username].CreatedTime;
+                                TimeSpan duration = utcDate.Subtract(sessionTime);
+                                string humanReadableDuration = string.Format(CultureInfo.InvariantCulture, "{0}:{1:D2}:{2:D2}",
+                                    (int)duration.TotalHours, duration.Minutes, duration.Seconds);
+                                userList.Append(" - ");
+                                userList.Append(humanReadableDuration);
+
+                            }
+                            userList.Append('\n');
                         }
                     }
                     if (usernames.Count == 0 || userList.Length == 0)
@@ -367,14 +405,22 @@ namespace FaustBot.Services
             //};
             //VpnRpcEnumSession out_rpc_enum_session = api.EnumSession(in_rpc_enum_session);
 
-            if (enableLogs)
+            try
             {
-                await CheckForUserChanges();
-            }
+                if (enableLogs)
+                {
+                    await CheckForUserChanges();
+                }
 
-            UpdateHubList();
-            await DeleteEmbed();
-            await UpdateEmbed();
+                UpdateHubList();
+                await DeleteEmbed();
+                await UpdateEmbed();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error: {ex.Message}");
+                Console.WriteLine($"Stack Trace: {ex.StackTrace}");
+            }
         }
 
         public VpnRpcEnumSession Get_EnumSession(string hubName)

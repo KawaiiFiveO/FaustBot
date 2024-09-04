@@ -42,6 +42,7 @@ In `config.json`:
     ],
     "TerminalName": "MaxiTerm",
     "TimeZone": "Pacific Standard Time",
+    "DisplaySessionTime": "true",
     "TitleText": "My VPN Network Status\nVPN Location",
     "FooterText": "VPN Bot will auto-update this message every minute",
     "MentionUserIds": "false",
@@ -74,6 +75,8 @@ In `config.json`:
 `TerminalName` - Displays `DT` next to the hub name if this user is found on the hub.
 
 `TimeZone` - Time zone to print logs with.
+
+`DisplaySessionTime` - WHether to display the session time next to the username in the embed.
 
 `TitleText` - The persistent embed's title text.
 
