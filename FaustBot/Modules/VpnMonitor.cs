@@ -15,10 +15,12 @@ namespace FaustBot.Services
 
         private static System.Timers.Timer countdownTimer;
 
-        VpnServerRpc api;
+        //VpnServerRpc api;
         //string hubName;
         IConfigurationSection hubListConfig;
         IConfigurationSection ignoreListConfig;
+        string serverIp;
+        string serverPassword;
         List<Hub> hubList = new List<Hub>();
         List<Hub> prevHubList = new List<Hub>();
         ulong guildId;
@@ -26,6 +28,7 @@ namespace FaustBot.Services
         int delay;
         bool enableLogs;
         ulong embedChannelId;
+        bool virtualHubMode;
         List<string> ignoreList = new List<string>();
         string terminalName;
         string selectedTimeZone;
@@ -42,14 +45,26 @@ namespace FaustBot.Services
         public VpnMonitor(CommandHandler handler, IServiceProvider services, IConfiguration config)
         {
             _handler = handler;
-            var serverIp = config["VpnServerIp"];
-            var serverPassword = config["VpnServerPassword"];
+            serverIp = config["VpnServerIp"];
+            if (!virtualHubMode)
+            {
+                serverPassword = config["VpnServerPassword"];
+            }
             //hubName = config["VpnHubName"];
             hubListConfig = config.GetSection("VpnHubList");
+            virtualHubMode = bool.Parse(config["VirtualHubMode"]);
             for (int i = 0; i < hubListConfig.GetChildren().Count(); i++)
             {
                 string hubName = config[$"VpnHubList:{i}"];
-                hubList.Add(new Hub(hubName));
+                if (virtualHubMode)
+                {
+                    string hubPassword = config[$"VpnHubPasswords:{i}"];
+                    hubList.Add(new Hub(hubName, hubPassword));
+                }
+                else
+                {
+                    hubList.Add(new Hub(hubName));
+                }
             }
             prevHubList = hubList;
             guildId = ulong.Parse(config["GuildId"]);
@@ -57,7 +72,6 @@ namespace FaustBot.Services
             embedChannelId = ulong.Parse(config["EmbedChannelId"]);
             delay = int.Parse(config["UpdateDelay"]) * 1000;
             enableLogs = bool.Parse(config["EnableLogs"]);
-
             ignoreListConfig = config.GetSection("IgnoreList");
             for (int i = 0; i < ignoreListConfig.GetChildren().Count(); i++)
             {
@@ -77,8 +91,10 @@ namespace FaustBot.Services
                 hubOnlineEmoji = config["HubOnlineEmoji"];
                 hubOfflineEmoji = config["HubOfflineEmoji"];
             }
-            api = new VpnServerRpc(serverIp, 443, serverPassword, "");
+
+            //api = new VpnServerRpc(serverIp, 443, serverPassword, "");
         }
+
 
         [RequireOwner]
         [SlashCommand("start", "Start VPN monitoring service.")]
@@ -114,12 +130,12 @@ namespace FaustBot.Services
         [SlashCommand("stop", "Stop VPN monitoring service.")]
         public async Task StopVpnMonitor()
         {
+            Console.WriteLine("Stopping VPN monitoring service...");
             if (countdownTimer == null)
             {
                 await RespondAsync("VPN monitoring service is not running.");
                 return;
             }
-            Console.WriteLine("Stopping VPN monitoring service.");
             DisposeTimer();
             await DeleteEmbed();
             await RespondAsync("VPN monitoring service stopped.");
@@ -131,40 +147,51 @@ namespace FaustBot.Services
             Console.WriteLine("Listing current VPN sessions...");
             try
             {
-                VpnRpcEnumSession out_rpc_enum_session = Get_EnumSession(hubName);
-
-                var usernameAndCreatedTimePairs = out_rpc_enum_session.SessionList
-                    .Where(session => !ignoreList.Contains(session.Username_str, StringComparer.OrdinalIgnoreCase))
-                    .Select(session => new
-                    {
-                        Username = session.Username_str,
-                        CreatedTime = session.CreatedTime_dt
-                    })
-                    .ToList();
-
+                Hub foundHub = hubList.FirstOrDefault(h => string.Equals(h.HubName, hubName, StringComparison.OrdinalIgnoreCase));
                 string output;
-                TimeZoneInfo sessionTimeZone = TimeZoneInfo.FindSystemTimeZoneById(selectedTimeZone);
-
-                if (usernameAndCreatedTimePairs.Count == 0)
+                if (foundHub != null)
                 {
-                    output = "No users are currently connected.";
+                    VpnRpcEnumSession out_rpc_enum_session = Get_EnumSession(foundHub);
+
+                    var usernameAndCreatedTimePairs = out_rpc_enum_session.SessionList
+                        .Where(session => !ignoreList.Contains(session.Username_str, StringComparer.OrdinalIgnoreCase))
+                        .Select(session => new
+                        {
+                            Username = session.Username_str,
+                            CreatedTime = session.CreatedTime_dt
+                        })
+                        .ToList();
+
+                    TimeZoneInfo sessionTimeZone = TimeZoneInfo.FindSystemTimeZoneById(selectedTimeZone);
+
+                    if (usernameAndCreatedTimePairs.Count == 0)
+                    {
+                        output = $"No users are currently connected to {foundHub.HubName}.";
+                    }
+                    else
+                    {
+                        output = string.Join(Environment.NewLine,
+                            usernameAndCreatedTimePairs.Select(pair =>
+                            {
+                                DateTime sessionTime = TimeZoneInfo.ConvertTimeFromUtc(pair.CreatedTime, sessionTimeZone);
+                                string humanReadableTime = sessionTime.ToString("dddd, MMMM dd, h:mm:ss tt", CultureInfo.InvariantCulture);
+                                return $"Username: {pair.Username}, Session Created: {humanReadableTime}";
+                            }));
+                    }
+
+                    //await RespondAsync(output);
                 }
                 else
                 {
-                    output = string.Join(Environment.NewLine,
-                        usernameAndCreatedTimePairs.Select(pair =>
-                        {
-                            DateTime sessionTime = TimeZoneInfo.ConvertTimeFromUtc(pair.CreatedTime, sessionTimeZone);
-                            string humanReadableTime = sessionTime.ToString("dddd, MMMM dd, h:mm:ss tt", CultureInfo.InvariantCulture);
-                            return $"Username: {pair.Username}, Session Created: {humanReadableTime}";
-                        }));
+                    output = "Hub not found.";
                 }
-
+                Console.WriteLine(output);
                 await RespondAsync(output);
             }
             catch (Exception ex)
             {
-                Console.WriteLine(ex.Message);
+                Console.WriteLine($"Error: {ex.Message}");
+                Console.WriteLine($"Stack Trace: {ex.StackTrace}");
                 await RespondAsync("An error occurred. See console for details.");
             }
         }
@@ -172,14 +199,24 @@ namespace FaustBot.Services
         [SlashCommand("status", "Print VPN hub status.")]
         public async Task VpnStatus(string hubName)
         {
+            Console.WriteLine("Printing VPN hub status...");
             try
             {
-                VpnRpcHubStatus out_rpc_hub_status = Test_GetHubStatus(hubName);
-                bool onlineStatus = out_rpc_hub_status.Online_bool;
-                string serverStatus = onlineStatus ? "online" : "offline";
-                string message = $"The {hubName} hub is currently {serverStatus}.";
-                Console.WriteLine(message);
-                await RespondAsync(message);
+                Hub foundHub = hubList.FirstOrDefault(h => string.Equals(h.HubName, hubName, StringComparison.OrdinalIgnoreCase));
+                if (foundHub != null)
+                {
+                    VpnRpcHubStatus out_rpc_hub_status = Test_GetHubStatus(foundHub);
+                    bool onlineStatus = out_rpc_hub_status.Online_bool;
+                    string serverStatus = onlineStatus ? "online" : "offline";
+                    string message = $"The {foundHub.HubName} hub is currently {serverStatus}.";
+                    Console.WriteLine(message);
+                    await RespondAsync(message);
+                }
+                else
+                {
+                    Console.WriteLine("Hub not found.");
+                    await RespondAsync("Hub not found.");
+                }
             }
             catch (Exception ex)
             {
@@ -195,10 +232,10 @@ namespace FaustBot.Services
             foreach (Hub hub in hubList)
             {
                 hub.ClearAllUsernames();
-                string hubName = hub.HubName;
-                bool hubStatus = Test_GetHubStatus(hubName).Online_bool;
+                //string hubName = hub.HubName;
+                bool hubStatus = Test_GetHubStatus(hub).Online_bool;
                 hub.OnlineStatus = hubStatus;
-                VpnRpcEnumSession newVpnRpcEnumSession = Get_EnumSession(hubName);
+                VpnRpcEnumSession newVpnRpcEnumSession = Get_EnumSession(hub);
 
                 foreach (var session in newVpnRpcEnumSession.SessionList)
                 {
@@ -247,8 +284,8 @@ namespace FaustBot.Services
                     DateTime sessionTime = TimeZoneInfo.ConvertTimeFromUtc(pair.Value.CreatedTime, sessionTimeZone);
                     string humanReadableTime = sessionTime.ToString("dddd, MMMM dd, h:mm:ss tt", CultureInfo.InvariantCulture);
                     string message = $"User {pair.Key} has joined the {hubName} hub at {humanReadableTime} PT.";
-                    await Context.Client.GetGuild(guildId).GetTextChannel(logChannelId).SendMessageAsync(message);
                     Console.WriteLine(message);
+                    await Context.Client.GetGuild(guildId).GetTextChannel(logChannelId).SendMessageAsync(message);
                 }
 
                 //var leftUsers = _currentUsernames
@@ -263,8 +300,8 @@ namespace FaustBot.Services
                     DateTime sessionTime = TimeZoneInfo.ConvertTimeFromUtc(pair.Value.LastCommTime, sessionTimeZone);
                     string humanReadableTime = sessionTime.ToString("dddd, MMMM dd, h:mm:ss tt", CultureInfo.InvariantCulture);
                     string message = $"User {pair.Key} has left the {hubName} hub. Last seen at {humanReadableTime} PT.";
-                    await Context.Client.GetGuild(guildId).GetTextChannel(logChannelId).SendMessageAsync(message);
                     Console.WriteLine(message);
+                    await Context.Client.GetGuild(guildId).GetTextChannel(logChannelId).SendMessageAsync(message);
                 }
                 //_currentUsernames = newUsernames;
             }
@@ -423,14 +460,15 @@ namespace FaustBot.Services
             }
         }
 
-        public VpnRpcEnumSession Get_EnumSession(string hubName)
+        public VpnRpcEnumSession Get_EnumSession(Hub hub)
         {
             //Console.WriteLine("Begin: Test_EnumSession");
 
             VpnRpcEnumSession in_rpc_enum_session = new VpnRpcEnumSession()
             {
-                HubName_str = hubName,
+                HubName_str = hub.HubName,
             };
+            VpnServerRpc api = GetApi(hub);
             VpnRpcEnumSession out_rpc_enum_session = api.EnumSession(in_rpc_enum_session);
 
             //print_object(out_rpc_enum_session);
@@ -442,14 +480,15 @@ namespace FaustBot.Services
             return out_rpc_enum_session;
         }
 
-        public VpnRpcHubStatus Test_GetHubStatus(string hubName)
+        public VpnRpcHubStatus Test_GetHubStatus(Hub hub)
         {
             //Console.WriteLine("Begin: Test_GetHubStatus");
 
             VpnRpcHubStatus in_rpc_hub_status = new VpnRpcHubStatus()
             {
-                HubName_str = hubName,
+                HubName_str = hub.HubName,
             };
+            VpnServerRpc api = GetApi(hub);
             VpnRpcHubStatus out_rpc_hub_status = api.GetHubStatus(in_rpc_hub_status);
 
             return(out_rpc_hub_status);
@@ -458,6 +497,21 @@ namespace FaustBot.Services
             //Console.WriteLine("-----");
             //Console.WriteLine();
         }
+
+        public VpnServerRpc GetApi(Hub hub)
+        {
+            VpnServerRpc api;
+            if (virtualHubMode)
+            {
+                api = new VpnServerRpc(serverIp, 443, hub.HubPassword, hub.HubName);
+            }
+            else
+            {
+                api = new VpnServerRpc(serverIp, 443, serverPassword, "");
+            }
+            return api;
+        }
+
         public void print_object(object obj)
         {
             var setting = new Newtonsoft.Json.JsonSerializerSettings()
@@ -479,13 +533,15 @@ namespace FaustBot.Services
     public class Hub
     {
         public string HubName { get; set; }
+        public string HubPassword { get; set; }
         public bool OnlineStatus { get; set; }
         public Dictionary<string, UserSessionInfo> _userSessions;
 
         // Constructor
-        public Hub(string hubName)
+        public Hub(string hubName, string hubPassword = "")
         {
             HubName = hubName;
+            HubPassword = hubPassword;
             OnlineStatus = false;
             _userSessions = new Dictionary<string, UserSessionInfo>();
         }

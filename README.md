@@ -30,10 +30,16 @@ In `config.json`:
     "UpdateDelay": "60",
     "VpnServerIp": "123.456.789.10",
     "VpnServerPassword": "PasswordHere",
+    "VirtualHubMode": "false",
     "VpnHubList": [
         "TEST-A",
         "TEST-B",
         "TEST-C"
+    ],
+    "VpnHubPasswords": [
+        "HubPassword-A",
+        "HubPassword-B",
+        "HubPassword-C"
     ],
     "IgnoreList": [
         "Local Bridge",
@@ -66,9 +72,13 @@ In `config.json`:
 
 `VpnServerIp` - SoftEther VPN server IP.
 
-`VpnServerPassword` - The password for your SoftEther VPN server.
+`VpnServerPassword` - The password for your SoftEther VPN server. (only if not using VirtualHubMode)
+
+`VirtualHubMode` - Whether to use Virtual Hub Administrator mode. (need to set VpnHubPasswords)
 
 `VpnHubList` - List of hub names to monitor.
+
+`VpnHubPasswords` - List of hub passwords. (only if using VirtualHubMode)
 
 `IgnoreList` - List of usernames to ignore. (Not counted as online users)
 
