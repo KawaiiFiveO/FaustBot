@@ -72,13 +72,13 @@ In `config.json`:
 
 `VpnServerIp` - SoftEther VPN server IP.
 
-`VpnServerPassword` - The password for your SoftEther VPN server. (only if not using VirtualHubMode)
+`VpnServerPassword` - The password for your SoftEther VPN server. (Only if not using `VirtualHubMode`)
 
-`VirtualHubMode` - Whether to use Virtual Hub Administrator mode. (need to set VpnHubPasswords)
+`VirtualHubMode` - Whether to use Virtual Hub Administrator mode. (Need to set `VpnHubPasswords`)
 
 `VpnHubList` - List of hub names to monitor.
 
-`VpnHubPasswords` - List of hub passwords. (only if using VirtualHubMode)
+`VpnHubPasswords` - List of hub passwords. (Only if using `VirtualHubMode`)
 
 `IgnoreList` - List of usernames to ignore. (Not counted as online users)
 
@@ -86,7 +86,7 @@ In `config.json`:
 
 `TimeZone` - Time zone to print logs with.
 
-`DisplaySessionTime` - WHether to display the session time next to the username in the embed.
+`DisplaySessionTime` - Whether to display the session time next to the username in the embed.
 
 `TitleText` - The persistent embed's title text.
 
@@ -96,6 +96,6 @@ In `config.json`:
 
 `CustomEmojis` - Whether to use custom emojis to display the hub online/offline status.
 
-`HubOnlineEmoji` - Emoji to use for an online hub. (if CustomEmojis is enabled)
+`HubOnlineEmoji` - Emoji to use for an online hub. (If `CustomEmojis` is enabled)
 
-`HubOfflineEmoji` - Emoji to use for an offline hub. (if CustomEmojis is enabled)
+`HubOfflineEmoji` - Emoji to use for an offline hub. (If `CustomEmojis` is enabled)
