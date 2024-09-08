@@ -12,7 +12,7 @@ namespace FaustBot.Services
         }
 
         [RequireOwner]
-        [SlashCommand("kys", "Shut down the bot.")]
+        [SlashCommand("shutdown", "Shut down the bot.")]
         public async Task Kys()
         {
             await RespondAsync("The system will shut down now.");

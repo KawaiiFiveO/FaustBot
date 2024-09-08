@@ -26,7 +26,7 @@ namespace FaustBot
 
             // build the configuration and assign to _config          
             _config = _builder.Build();
-            _testGuildId = ulong.Parse(_config["TestGuildId"]);
+            _testGuildId = ulong.Parse(_config["GuildId"]);
         }
 
         public async Task MainAsync()
@@ -99,7 +99,7 @@ namespace FaustBot
                 // this method will add commands globally, but can take around an hour
                 await _commands.RegisterCommandsGloballyAsync(true);
             }
-            Console.WriteLine($"Connected as -> [{_client.CurrentUser}] :)");
+            Console.WriteLine($"Connected as -> [{_client.CurrentUser.Username}#{_client.CurrentUser.Discriminator}] :)");
         }
 
         // this method handles the ServiceCollection creation/configuration, and builds out the service provider we can call on later
