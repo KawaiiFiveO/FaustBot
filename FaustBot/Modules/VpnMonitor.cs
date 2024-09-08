@@ -279,18 +279,34 @@ namespace FaustBot.Services
 
                 foreach (var pair in currentUsers.Where(pair => !prevUsers.ContainsKey(pair.Key)))
                 {
+                    string message;
                     DateTime sessionTime = TimeZoneInfo.ConvertTimeFromUtc(pair.Value.CreatedTime, sessionTimeZone);
                     string humanReadableTime = sessionTime.ToString("dddd, MMMM dd, h:mm:ss tt", CultureInfo.InvariantCulture);
-                    string message = $"User {pair.Key} has joined the {hubName} hub at {humanReadableTime}.";
+                    if (mentionUserIds)
+                    {
+                        message = $"User <@{pair.Key}> has joined the {hubName} hub at {humanReadableTime}.";
+                    }
+                    else
+                    {
+                        message = $"User {pair.Key} has joined the {hubName} hub at {humanReadableTime}.";
+                    }
                     Console.WriteLine(message);
                     tasks.Add(Context.Client.GetGuild(guildId).GetTextChannel(logChannelId).SendMessageAsync(message));
                 }
 
                 foreach (var pair in prevUsers.Where(pair => !currentUsers.ContainsKey(pair.Key)))
                 {
+                    string message;
                     DateTime sessionTime = TimeZoneInfo.ConvertTimeFromUtc(pair.Value.LastCommTime, sessionTimeZone);
                     string humanReadableTime = sessionTime.ToString("dddd, MMMM dd, h:mm:ss tt", CultureInfo.InvariantCulture);
-                    string message = $"User {pair.Key} has left the {hubName} hub. Last seen at {humanReadableTime}.";
+                    if (mentionUserIds)
+                    {
+                        message = $"User <@{pair.Key}> has left the {hubName} hub. Last seen at {humanReadableTime}.";
+                    }
+                    else
+                    {
+                        message = $"User {pair.Key} has left the {hubName} hub. Last seen at {humanReadableTime}.";
+                    }
                     Console.WriteLine(message);
                     tasks.Add(Context.Client.GetGuild(guildId).GetTextChannel(logChannelId).SendMessageAsync(message));
                 }
