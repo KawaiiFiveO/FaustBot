@@ -66,7 +66,7 @@ namespace FaustBot.Services
                     hubList.Add(new Hub(hubName));
                 }
             }
-            prevHubList = hubList;
+            //prevHubList = hubList;
             guildId = ulong.Parse(config["GuildId"]);
             logChannelId = ulong.Parse(config["LogChannelId"]);
             embedChannelId = ulong.Parse(config["EmbedChannelId"]);
@@ -105,12 +105,9 @@ namespace FaustBot.Services
                 await RespondAsync("VPN monitoring service is already running.");
                 return;
             }
+
             Console.WriteLine("Starting VPN monitoring service.");
-            //VpnRpcEnumSession out_rpc_enum_session = Get_EnumSession();
-            //if (enableLogs)
-            //{
-            //    SaveUsernames(out_rpc_enum_session);
-            //}
+
             try
             {
                 UpdateHubList();
@@ -179,7 +176,6 @@ namespace FaustBot.Services
                             }));
                     }
 
-                    //await RespondAsync(output);
                 }
                 else
                 {
@@ -228,11 +224,11 @@ namespace FaustBot.Services
 
         public void UpdateHubList()
         {
-            prevHubList = hubList;
+            prevHubList = hubList.Select(hub => hub.DeepCopy()).ToList();
+
             foreach (Hub hub in hubList)
             {
                 hub.ClearAllUsernames();
-                //string hubName = hub.HubName;
                 bool hubStatus = Test_GetHubStatus(hub).Online_bool;
                 hub.OnlineStatus = hubStatus;
                 VpnRpcEnumSession newVpnRpcEnumSession = Get_EnumSession(hub);
@@ -250,62 +246,59 @@ namespace FaustBot.Services
             }
         }
 
+
         public async Task CheckForUserChanges()
         {
             Console.WriteLine("Checking for user changes...");
-            
+
+            TimeZoneInfo sessionTimeZone;
+            try
+            {
+                sessionTimeZone = TimeZoneInfo.FindSystemTimeZoneById(selectedTimeZone);
+            }
+            catch (Exception)
+            {
+                Console.WriteLine($"Invalid or missing timezone {selectedTimeZone}. Defaulting to UTC.");
+                sessionTimeZone = TimeZoneInfo.Utc;
+            }
+
+            var tasks = new List<Task>();
+
             foreach (Hub hub in hubList)
             {
                 string hubName = hub.HubName;
-
-                //VpnRpcEnumSession newVpnRpcEnumSession = Get_EnumSession(hubName);
-                //var newUsernames = newVpnRpcEnumSession.SessionList
-                //    .ToDictionary(
-                //        session => session.Username_str,
-                //        session => new UserSessionInfo
-                //   {
-                //            CreatedTime = session.CreatedTime_dt,
-                //            LastCommTime = session.LastCommTime_dt
-                //        });
-
-                //var joinedUsers = newUsernames
-                //    .Where(pair => !_currentUsernames.ContainsKey(pair.Key))
-                //    .ToList();
-
                 var currentUsers = hub._userSessions;
 
-                var prevUsers = prevHubList.Find(hub => hub.HubName == hubName)._userSessions;
-
-                var joinedUsers = currentUsers.Where(pair => !prevUsers.ContainsKey(pair.Key)).ToList();
-
-                foreach (var pair in joinedUsers)
+                var prevHub = prevHubList.Find(hub => hub.HubName == hubName);
+                if (prevHub == null)
                 {
-                    TimeZoneInfo sessionTimeZone = TimeZoneInfo.FindSystemTimeZoneById(selectedTimeZone);
+                    Console.WriteLine($"No previous hub found for {hubName}, skipping.");
+                    continue;
+                }
+                var prevUsers = prevHub._userSessions;
+
+                foreach (var pair in currentUsers.Where(pair => !prevUsers.ContainsKey(pair.Key)))
+                {
                     DateTime sessionTime = TimeZoneInfo.ConvertTimeFromUtc(pair.Value.CreatedTime, sessionTimeZone);
                     string humanReadableTime = sessionTime.ToString("dddd, MMMM dd, h:mm:ss tt", CultureInfo.InvariantCulture);
-                    string message = $"User {pair.Key} has joined the {hubName} hub at {humanReadableTime} PT.";
+                    string message = $"User {pair.Key} has joined the {hubName} hub at {humanReadableTime}.";
                     Console.WriteLine(message);
-                    await Context.Client.GetGuild(guildId).GetTextChannel(logChannelId).SendMessageAsync(message);
+                    tasks.Add(Context.Client.GetGuild(guildId).GetTextChannel(logChannelId).SendMessageAsync(message));
                 }
 
-                //var leftUsers = _currentUsernames
-                //    .Where(pair => !newUsernames.ContainsKey(pair.Key))
-                //    .ToList();
-
-                var leftUsers = prevUsers.Where(pair => !currentUsers.ContainsKey(pair.Key)).ToList();
-
-                foreach (var pair in leftUsers)
+                foreach (var pair in prevUsers.Where(pair => !currentUsers.ContainsKey(pair.Key)))
                 {
-                    TimeZoneInfo sessionTimeZone = TimeZoneInfo.FindSystemTimeZoneById(selectedTimeZone);
                     DateTime sessionTime = TimeZoneInfo.ConvertTimeFromUtc(pair.Value.LastCommTime, sessionTimeZone);
                     string humanReadableTime = sessionTime.ToString("dddd, MMMM dd, h:mm:ss tt", CultureInfo.InvariantCulture);
-                    string message = $"User {pair.Key} has left the {hubName} hub. Last seen at {humanReadableTime} PT.";
+                    string message = $"User {pair.Key} has left the {hubName} hub. Last seen at {humanReadableTime}.";
                     Console.WriteLine(message);
-                    await Context.Client.GetGuild(guildId).GetTextChannel(logChannelId).SendMessageAsync(message);
+                    tasks.Add(Context.Client.GetGuild(guildId).GetTextChannel(logChannelId).SendMessageAsync(message));
                 }
-                //_currentUsernames = newUsernames;
             }
+
+            await Task.WhenAll(tasks);
         }
+
 
 
         public async Task UpdateEmbed()
@@ -562,6 +555,24 @@ namespace FaustBot.Services
         public void ClearAllUsernames()
         {
             _userSessions.Clear();
+        }
+
+        // Method to create a deep copy of the Hub object
+        public Hub DeepCopy()
+        {
+            var newHub = new Hub(this.HubName, this.HubPassword)
+            {
+                OnlineStatus = this.OnlineStatus,
+                _userSessions = this._userSessions.ToDictionary(
+                    entry => entry.Key,
+                    entry => new UserSessionInfo
+                    {
+                        CreatedTime = entry.Value.CreatedTime,
+                        LastCommTime = entry.Value.LastCommTime
+                    }
+                )
+            };
+            return newHub;
         }
     }
 }
