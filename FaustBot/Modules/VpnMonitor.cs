@@ -461,12 +461,12 @@ namespace FaustBot.Services
 
             try
             {
+                UpdateHubList();
                 if (enableLogs)
                 {
                     await CheckForUserChanges();
                 }
 
-                UpdateHubList();
                 await DeleteEmbed();
                 await UpdateEmbed();
             }
