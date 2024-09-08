@@ -279,6 +279,10 @@ namespace FaustBot.Services
 
                 foreach (var pair in currentUsers.Where(pair => !prevUsers.ContainsKey(pair.Key)))
                 {
+                    if (ignoreList.Contains(pair.Key, StringComparer.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
                     string message;
                     DateTime sessionTime = TimeZoneInfo.ConvertTimeFromUtc(pair.Value.CreatedTime, sessionTimeZone);
                     string humanReadableTime = sessionTime.ToString("dddd, MMMM dd, h:mm:ss tt", CultureInfo.InvariantCulture);
@@ -296,6 +300,10 @@ namespace FaustBot.Services
 
                 foreach (var pair in prevUsers.Where(pair => !currentUsers.ContainsKey(pair.Key)))
                 {
+                    if (ignoreList.Contains(pair.Key, StringComparer.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
                     string message;
                     DateTime sessionTime = TimeZoneInfo.ConvertTimeFromUtc(pair.Value.LastCommTime, sessionTimeZone);
                     string humanReadableTime = sessionTime.ToString("dddd, MMMM dd, h:mm:ss tt", CultureInfo.InvariantCulture);
