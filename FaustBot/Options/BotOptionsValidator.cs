@@ -6,6 +6,9 @@ public sealed class BotOptionsValidator : IValidateOptions<BotOptions>
 {
     private const int MinUpdateDelay = 10;
 
+    // Discord's limit for an autocomplete choice, which game names are offered as.
+    private const int MaxGameNameLength = 100;
+
     public ValidateOptionsResult Validate(string? name, BotOptions options)
     {
         List<string> errors = [];
@@ -52,6 +55,13 @@ public sealed class BotOptionsValidator : IValidateOptions<BotOptions>
             errors.Add("MaxPlayersPerHub can't be negative.");
         }
 
+        if (options.PingInterval < 0)
+        {
+            errors.Add("PingInterval can't be negative.");
+        }
+
+        ValidateGames(options, errors);
+
         if (!TimeZoneInfo.TryFindSystemTimeZoneById(options.TimeZone, out _))
         {
             errors.Add($"TimeZone '{options.TimeZone}' was not found on this system.");
@@ -64,6 +74,30 @@ public sealed class BotOptionsValidator : IValidateOptions<BotOptions>
         }
 
         return errors.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(errors);
+    }
+
+    private static void ValidateGames(BotOptions options, List<string> errors)
+    {
+        foreach (var game in options.Games)
+        {
+            if (string.IsNullOrWhiteSpace(game))
+            {
+                errors.Add("Games can't contain an empty name.");
+            }
+            else if (game.Length > MaxGameNameLength)
+            {
+                errors.Add($"Game '{game}' is longer than {MaxGameNameLength} characters.");
+            }
+        }
+
+        var duplicates = options.Games
+            .GroupBy(g => g, StringComparer.OrdinalIgnoreCase)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key);
+        foreach (var duplicate in duplicates)
+        {
+            errors.Add($"Game '{duplicate}' is listed more than once.");
+        }
     }
 
     private static void ValidateHubs(BotOptions options, List<string> errors)

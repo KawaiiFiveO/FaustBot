@@ -17,6 +17,15 @@ public sealed class BotOptions
     /// <summary>Members with any of these roles can control the bot.</summary>
     public List<ulong> AdminRoleIds { get; set; } = [];
 
+    /// <summary>Users who can set the hosted game, in addition to bot admins.</summary>
+    public List<ulong> ModeratorUserIds { get; set; } = [];
+
+    /// <summary>Members with any of these roles can set the hosted game.</summary>
+    public List<ulong> ModeratorRoleIds { get; set; } = [];
+
+    /// <summary>Games that can be shown as hosted on a hub.</summary>
+    public List<string> Games { get; set; } = [];
+
     /// <summary>Start VPN monitoring when the bot connects, without waiting for the start command.</summary>
     public bool AutoStartMonitoring { get; set; } = true;
 
@@ -44,6 +53,9 @@ public sealed class BotOptions
     public string TerminalName { get; set; } = "";
     public string TimeZone { get; set; } = "UTC";
     public bool DisplaySessionTime { get; set; } = true;
+
+    /// <summary>Minutes between pings of each player's IP. 0 turns pinging off.</summary>
+    public int PingInterval { get; set; }
 
     /// <summary>Shown as "n/MaxPlayersPerHub Players" on each hub. 0 shows just the count.</summary>
     public int MaxPlayersPerHub { get; set; } = 4;

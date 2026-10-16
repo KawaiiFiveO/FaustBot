@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using Discord;
 using FaustBot.Options;
+using FaustBot.State;
 using FaustBot.Vpn;
 using Microsoft.Extensions.Options;
 
@@ -14,8 +15,15 @@ public sealed class StatusEmbedBuilder(IOptionsMonitor<BotOptions> options)
 
     private BotOptions Settings => options.CurrentValue;
 
+    /// <param name="hostedGames">The game each hub is hosting, keyed by hub name.</param>
+    /// <param name="pingTimes">Round-trip times keyed by client IP, for the players that answered.</param>
     /// <param name="unreachableSince">When every hub stopped answering, or null if any hub is reachable.</param>
-    public Embed Build(IReadOnlyList<HubSnapshot> hubs, DateTimeOffset now, DateTimeOffset? unreachableSince = null)
+    public Embed Build(
+        IReadOnlyList<HubSnapshot> hubs,
+        IReadOnlyDictionary<string, HostedGame> hostedGames,
+        IReadOnlyDictionary<string, TimeSpan> pingTimes,
+        DateTimeOffset now,
+        DateTimeOffset? unreachableSince = null)
     {
         var embed = CreateBase(now);
 
@@ -42,7 +50,7 @@ public sealed class StatusEmbedBuilder(IOptionsMonitor<BotOptions> options)
 
         foreach (var (hub, name) in fields)
         {
-            embed.AddField(name, BuildFieldValue(hub, now, valueBudget));
+            embed.AddField(name, BuildFieldValue(hub, hostedGames.GetValueOrDefault(hub.Name), pingTimes, now, valueBudget));
         }
 
         return embed.Build();
@@ -76,7 +84,8 @@ public sealed class StatusEmbedBuilder(IOptionsMonitor<BotOptions> options)
         return hub.HasTerminal ? name + TerminalBadge : name;
     }
 
-    private string BuildFieldValue(HubSnapshot hub, DateTimeOffset now, int maxLength)
+    private string BuildFieldValue(
+        HubSnapshot hub, HostedGame? game, IReadOnlyDictionary<string, TimeSpan> pingTimes, DateTimeOffset now, int maxLength)
     {
         switch (hub.Status)
         {
@@ -86,15 +95,21 @@ public sealed class StatusEmbedBuilder(IOptionsMonitor<BotOptions> options)
                 return "Status Unknown";
         }
 
-        if (hub.Sessions.Count == 0)
+        var value = new StringBuilder();
+        if (game is not null)
         {
-            return "No Players";
+            // Capped so the player list always keeps some room. Escaping can double the length, so truncate first.
+            value.Append($"🎮 **{Format.Sanitize(Truncate(game.Game, maxLength / 4))}**\n");
         }
 
-        var value = new StringBuilder();
+        if (hub.Sessions.Count == 0)
+        {
+            return value.Append("No Players").ToString();
+        }
+
         for (var i = 0; i < hub.Sessions.Count; i++)
         {
-            var line = FormatSession(hub.Sessions[i], now);
+            var line = FormatSession(hub.Sessions[i], pingTimes, now);
 
             // Leave room for the "...and N more" line if the rest won't fit.
             var remaining = hub.Sessions.Count - i - 1;
@@ -111,17 +126,22 @@ public sealed class StatusEmbedBuilder(IOptionsMonitor<BotOptions> options)
         return value.ToString().TrimEnd('\n');
     }
 
-    private string FormatSession(VpnSession session, DateTimeOffset now)
+    private string FormatSession(VpnSession session, IReadOnlyDictionary<string, TimeSpan> pingTimes, DateTimeOffset now)
     {
-        var name = Settings.MentionUserIds ? $"<@{session.Username}>" : session.Username;
-        if (!Settings.DisplaySessionTime)
+        var line = Settings.MentionUserIds ? $"<@{session.Username}>" : session.Username;
+        if (Settings.DisplaySessionTime)
         {
-            return name;
+            var duration = now.UtcDateTime - session.CreatedUtc;
+            line += string.Create(CultureInfo.InvariantCulture,
+                $" - {(int)duration.TotalHours}:{duration.Minutes:D2}:{duration.Seconds:D2}");
         }
 
-        var duration = now.UtcDateTime - session.CreatedUtc;
-        return string.Create(CultureInfo.InvariantCulture,
-            $"{name} - {(int)duration.TotalHours}:{duration.Minutes:D2}:{duration.Seconds:D2}");
+        if (session.ClientIp is { } ip && pingTimes.TryGetValue(ip, out var roundTrip))
+        {
+            line += string.Create(CultureInfo.InvariantCulture, $" - {(int)roundTrip.TotalMilliseconds}ms");
+        }
+
+        return line;
     }
 
     private static string Truncate(string value, int maxLength) =>

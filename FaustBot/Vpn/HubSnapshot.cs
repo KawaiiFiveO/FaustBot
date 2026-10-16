@@ -10,7 +10,8 @@ public enum HubStatus
 }
 
 /// <summary>A user connected to a hub. Times are UTC.</summary>
-public sealed record VpnSession(string Username, DateTime CreatedUtc, DateTime LastCommUtc);
+/// <param name="ClientIp">The address the user connected from. Only used for pinging; never displayed or logged.</param>
+public sealed record VpnSession(string Username, DateTime CreatedUtc, DateTime LastCommUtc, string? ClientIp = null);
 
 /// <summary>The state of one hub at the time it was queried.</summary>
 /// <param name="Sessions">Connected users, one entry per username, excluding the configured IgnoreList.</param>

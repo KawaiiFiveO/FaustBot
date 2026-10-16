@@ -14,7 +14,13 @@ public sealed class BotState
 
     /// <summary>Admins added at runtime with /admin add.</summary>
     public List<ulong> AdminUserIds { get; set; } = [];
+
+    /// <summary>The game each hub is hosting, keyed by hub name, set with /game host.</summary>
+    public Dictionary<string, HostedGame> HostedGames { get; set; } = new();
 }
+
+/// <param name="StartedUtc">When /game host was run, so a game set mid-update isn't cleared by that update.</param>
+public sealed record HostedGame(string Game, DateTime StartedUtc);
 
 public sealed class StateStore(ILogger<StateStore> logger)
 {

@@ -69,7 +69,7 @@ public sealed class VpnServerClient : IDisposable
             .Where(s => !string.IsNullOrEmpty(s.Username_str) && !connection.IgnoreList.Contains(s.Username_str))
             .GroupBy(s => s.Username_str, StringComparer.OrdinalIgnoreCase)
             .Select(g => g.MinBy(s => s.CreatedTime_dt)!)
-            .Select(s => new VpnSession(s.Username_str, AsUtc(s.CreatedTime_dt), AsUtc(s.LastCommTime_dt)))
+            .Select(s => new VpnSession(s.Username_str, AsUtc(s.CreatedTime_dt), AsUtc(s.LastCommTime_dt), s.ClientIP_ip))
             .ToList();
 
         var terminalName = connection.Options.TerminalName;

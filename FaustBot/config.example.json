@@ -9,6 +9,8 @@
 
   "AdminUserIds": [],
   "AdminRoleIds": [],
+  "ModeratorUserIds": [],
+  "ModeratorRoleIds": [],
 
   "VpnServerIp": "127.0.0.1",
   "VpnServerPort": 443,
@@ -21,9 +23,11 @@
   ],
   "IgnoreList": [ "Local Bridge", "SecureNAT", "MaxiTerm" ],
   "TerminalName": "MaxiTerm",
+  "Games": [ "Game A", "Game B" ],
 
   "TimeZone": "Pacific Standard Time",
   "DisplaySessionTime": true,
+  "PingInterval": 5,
   "MaxPlayersPerHub": 4,
   "TitleText": "My VPN Network Status\nVPN Location",
   "FooterText": "VPN Bot will auto-update this message every minute",

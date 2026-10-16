@@ -60,6 +60,8 @@ builder.Services.AddSingleton<AdminService>();
 builder.Services.AddSingleton<ConfigReloader>();
 builder.Services.AddSingleton<VpnServerClient>();
 builder.Services.AddSingleton<StatusEmbedBuilder>();
+builder.Services.AddSingleton<HostedGameService>();
+builder.Services.AddSingleton<PlayerPingService>();
 builder.Services.AddSingleton<VpnMonitorService>();
 
 // Hosted services stop in reverse order, so the monitor stops before the Discord client disconnects.

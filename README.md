@@ -24,13 +24,17 @@ A Discord bot for monitoring SoftEther VPN hubs.
 
 `/admin list` - List bot admins. (Admin)
 
-Admins are the bot owner, `AdminUserIds`, members with an `AdminRoleIds` role, and users added with `/admin add`.
+`/game host <hub> <game>` - Show a game from `Games` on a hub in the embed until the hub empties. (Moderator)
+
+`/game clear <hub>` - Stop showing a hub's game. (Moderator)
+
+Admins are the bot owner, `AdminUserIds`, members with an `AdminRoleIds` role, and users added with `/admin add`. Moderators are admins, `ModeratorUserIds` and members with a `ModeratorRoleIds` role.
 
 Commands are registered to `GuildId` only. Interactions from other guilds are ignored, so the token can be shared with other bots that are each isolated to their own guild.
 
 ## Config
 
-Copy `config.example.json` to `config.json` next to the binary. Runtime state (embed message, admins added with `/admin add`, paused state) is kept in `state.json`.
+Copy `config.example.json` to `config.json` next to the binary. Runtime state (embed message, admins added with `/admin add`, paused state, hosted games) is kept in `state.json`.
 
 `Token` - Your bot token.
 
@@ -50,6 +54,10 @@ Copy `config.example.json` to `config.json` next to the binary. Runtime state (e
 
 `AdminRoleIds` - Role IDs that can control the bot.
 
+`ModeratorUserIds` - User IDs that can use `/game`.
+
+`ModeratorRoleIds` - Role IDs that can use `/game`.
+
 `VpnServerIp` - SoftEther VPN server IP.
 
 `VpnServerPort` - SoftEther VPN server admin port.
@@ -64,9 +72,13 @@ Copy `config.example.json` to `config.json` next to the binary. Runtime state (e
 
 `TerminalName` - Displays `DT` next to the hub name if this user is found on the hub.
 
+`Games` - Games that `/game host` can show.
+
 `TimeZone` - Time zone to print logs with.
 
 `DisplaySessionTime` - Whether to display the session time next to the username in the embed.
+
+`PingInterval` - Minutes between pinging each player's IP to show their latency in the embed. (0 to disable)
 
 `MaxPlayersPerHub` - Shown as `n/MaxPlayersPerHub Players`. (0 to show only the count)
 

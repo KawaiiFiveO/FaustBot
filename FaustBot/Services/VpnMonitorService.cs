@@ -17,6 +17,8 @@ public sealed class VpnMonitorService(
     DiscordSocketClient client,
     VpnServerClient vpn,
     StatusEmbedBuilder embedBuilder,
+    HostedGameService games,
+    PlayerPingService pings,
     StateStore state,
     IOptionsMonitor<BotOptions> options,
     TimeProvider timeProvider,
@@ -36,7 +38,7 @@ public sealed class VpnMonitorService(
     private bool _autoStartHandled;
     private IDisposable? _optionsSubscription;
 
-    // Released to cut the wait between updates short, e.g. after /bot reload.
+    // Released to cut the wait between updates short, e.g. after /bot reload or /game host.
     private readonly SemaphoreSlim _refreshSignal = new(0, 1);
 
     // Last snapshot of each hub that answered, for join/leave logs.
@@ -226,7 +228,8 @@ public sealed class VpnMonitorService(
         cancellationToken.ThrowIfCancellationRequested();
     }
 
-    private void RequestRefresh()
+    /// <summary>Updates the embed now instead of after UpdateDelay. Does nothing while monitoring is paused.</summary>
+    public void RequestRefresh()
     {
         try
         {
@@ -242,6 +245,7 @@ public sealed class VpnMonitorService(
     {
         try
         {
+            var queriedAt = timeProvider.GetUtcNow();
             var hubs = await vpn.QueryAllHubsAsync(cancellationToken);
             TrackReachability(hubs);
 
@@ -251,7 +255,12 @@ public sealed class VpnMonitorService(
                 await PostUserChangesAsync(changes);
             }
 
-            await PublishEmbedAsync(embedBuilder.Build(hubs, timeProvider.GetUtcNow(), _serverUnreachableSince));
+            var pingTimes = await pings.RefreshAsync(hubs, cancellationToken);
+            await games.ClearFinishedAsync(hubs, queriedAt.UtcDateTime);
+            var hostedGames = await games.GetAllAsync();
+
+            await PublishEmbedAsync(embedBuilder.Build(
+                hubs, hostedGames, pingTimes, timeProvider.GetUtcNow(), _serverUnreachableSince));
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {

@@ -44,6 +44,12 @@ public sealed class AdminService(DiscordSocketClient client, StateStore state, I
         return await IsOwnerAsync(user);
     }
 
+    /// <summary>Moderators can set the hosted game. Every admin is also a moderator.</summary>
+    public async Task<bool> IsModeratorAsync(IUser user) =>
+        Settings.ModeratorUserIds.Contains(user.Id)
+        || (user is IGuildUser member && member.RoleIds.Any(Settings.ModeratorRoleIds.Contains))
+        || await IsAdminAsync(user);
+
     public Task<IReadOnlyList<ulong>> GetRuntimeAdminIdsAsync() =>
         state.ReadAsync<IReadOnlyList<ulong>>(s => s.AdminUserIds.ToList());
 
