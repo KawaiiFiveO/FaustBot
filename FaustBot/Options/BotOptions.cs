@@ -17,11 +17,17 @@ public sealed class BotOptions
     /// <summary>Members with any of these roles can control the bot.</summary>
     public List<ulong> AdminRoleIds { get; set; } = [];
 
+    /// <summary>Allow /admin add. When off, admins added with it are ignored (but kept in state.json).</summary>
+    public bool EnableRuntimeAdmins { get; set; } = true;
+
     /// <summary>Users who can set the hosted game, in addition to bot admins.</summary>
     public List<ulong> ModeratorUserIds { get; set; } = [];
 
     /// <summary>Members with any of these roles can set the hosted game.</summary>
     public List<ulong> ModeratorRoleIds { get; set; } = [];
+
+    /// <summary>Allow /mod add. When off, moderators added with it are ignored (but kept in state.json).</summary>
+    public bool EnableRuntimeModerators { get; set; } = true;
 
     /// <summary>Games that can be shown as hosted on a hub.</summary>
     public List<string> Games { get; set; } = [];

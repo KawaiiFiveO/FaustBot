@@ -15,6 +15,9 @@ public sealed class BotState
     /// <summary>Admins added at runtime with /admin add.</summary>
     public List<ulong> AdminUserIds { get; set; } = [];
 
+    /// <summary>Moderators added at runtime with /mod add.</summary>
+    public List<ulong> ModeratorUserIds { get; set; } = [];
+
     /// <summary>The game each hub is hosting, keyed by hub name, set with /game host.</summary>
     public Dictionary<string, HostedGame> HostedGames { get; set; } = new();
 }

@@ -9,8 +9,10 @@
 
   "AdminUserIds": [],
   "AdminRoleIds": [],
+  "EnableRuntimeAdmins": true,
   "ModeratorUserIds": [],
   "ModeratorRoleIds": [],
+  "EnableRuntimeModerators": true,
 
   "VpnServerIp": "127.0.0.1",
   "VpnServerPort": 443,

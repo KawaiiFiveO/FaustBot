@@ -20,7 +20,13 @@ public sealed class AdminCommands(AdminService admins, IOptionsMonitor<BotOption
             return;
         }
 
-        var added = await admins.AddAsync(user.Id);
+        if (!options.CurrentValue.EnableRuntimeAdmins)
+        {
+            await RespondAsync("Adding admins from Discord is turned off. Add them to AdminUserIds in config.json.", ephemeral: true);
+            return;
+        }
+
+        var added = await admins.AddAdminAsync(user.Id);
         await RespondAsync(added ? $"{user.Mention} is now a bot admin." : $"{user.Mention} is already a bot admin.",
             ephemeral: true, allowedMentions: AllowedMentions.None);
     }
@@ -29,10 +35,10 @@ public sealed class AdminCommands(AdminService admins, IOptionsMonitor<BotOption
     [SlashCommand("remove", "Stop a user from controlling the bot.")]
     public async Task Remove([Summary(description: "The bot admin to remove")] IUser user)
     {
-        var message = await admins.RemoveAsync(user.Id) switch
+        var message = await admins.RemoveAdminAsync(user.Id) switch
         {
-            AdminRemoveResult.Removed => $"{user.Mention} is no longer a bot admin.",
-            AdminRemoveResult.InConfig => $"{user.Mention} is listed in AdminUserIds in config.json, so they can only be removed there.",
+            RemoveResult.Removed => $"{user.Mention} is no longer a bot admin.",
+            RemoveResult.InConfig => $"{user.Mention} is listed in AdminUserIds in config.json, so they can only be removed there.",
             _ => $"{user.Mention} isn't a bot admin added with `/admin add`.",
         };
         await RespondAsync(message, ephemeral: true, allowedMentions: AllowedMentions.None);
@@ -47,13 +53,16 @@ public sealed class AdminCommands(AdminService admins, IOptionsMonitor<BotOption
         AppendSection(text, "Owner", (await admins.GetOwnerIdsAsync()).Select(MentionUtils.MentionUser));
         AppendSection(text, "Admins (config.json)", config.AdminUserIds.Select(MentionUtils.MentionUser));
         AppendSection(text, "Admin roles (config.json)", config.AdminRoleIds.Select(MentionUtils.MentionRole));
-        AppendSection(text, "Admins (added with /admin add)", (await admins.GetRuntimeAdminIdsAsync()).Select(MentionUtils.MentionUser));
+        AppendSection(text, config.EnableRuntimeAdmins
+                ? "Admins (added with /admin add)"
+                : "Admins (added with /admin add, ignored: EnableRuntimeAdmins is off)",
+            (await admins.GetRuntimeAdminIdsAsync()).Select(MentionUtils.MentionUser));
 
         // Mentions render as names without pinging anyone.
         await RespondAsync(text.ToString(), ephemeral: true, allowedMentions: AllowedMentions.None);
     }
 
-    private static void AppendSection(StringBuilder text, string heading, IEnumerable<string> entries)
+    internal static void AppendSection(StringBuilder text, string heading, IEnumerable<string> entries)
     {
         var list = entries.ToList();
         text.Append("**").Append(heading).Append("**\n")

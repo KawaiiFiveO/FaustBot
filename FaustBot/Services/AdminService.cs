@@ -6,16 +6,17 @@ using Microsoft.Extensions.Options;
 
 namespace FaustBot.Services;
 
-public enum AdminRemoveResult
+public enum RemoveResult
 {
     Removed,
-    NotAnAdmin,
+    NotListed,
 
     /// <summary>The user is listed in config.json, which can't be changed from Discord.</summary>
     InConfig,
 }
 
-/// <summary>Decides who can control the bot: the owner, config.json admins and roles, and admins added at runtime.</summary>
+/// <summary>Decides who can control the bot and who can moderate: the owner, config.json users and roles, and
+/// users added at runtime.</summary>
 public sealed class AdminService(DiscordSocketClient client, StateStore state, IOptionsMonitor<BotOptions> options)
 {
     private BotOptions Settings => options.CurrentValue;
@@ -36,7 +37,7 @@ public sealed class AdminService(DiscordSocketClient client, StateStore state, I
     {
         if (Settings.AdminUserIds.Contains(user.Id)
             || (user is IGuildUser member && member.RoleIds.Any(Settings.AdminRoleIds.Contains))
-            || await state.ReadAsync(s => s.AdminUserIds.Contains(user.Id)))
+            || (Settings.EnableRuntimeAdmins && await state.ReadAsync(s => s.AdminUserIds.Contains(user.Id))))
         {
             return true;
         }
@@ -48,31 +49,47 @@ public sealed class AdminService(DiscordSocketClient client, StateStore state, I
     public async Task<bool> IsModeratorAsync(IUser user) =>
         Settings.ModeratorUserIds.Contains(user.Id)
         || (user is IGuildUser member && member.RoleIds.Any(Settings.ModeratorRoleIds.Contains))
+        || (Settings.EnableRuntimeModerators && await state.ReadAsync(s => s.ModeratorUserIds.Contains(user.Id)))
         || await IsAdminAsync(user);
 
     public Task<IReadOnlyList<ulong>> GetRuntimeAdminIdsAsync() =>
         state.ReadAsync<IReadOnlyList<ulong>>(s => s.AdminUserIds.ToList());
 
+    public Task<IReadOnlyList<ulong>> GetRuntimeModeratorIdsAsync() =>
+        state.ReadAsync<IReadOnlyList<ulong>>(s => s.ModeratorUserIds.ToList());
+
     /// <summary>Returns false if the user was already an admin by user ID.</summary>
-    public async Task<bool> AddAsync(ulong userId)
+    public Task<bool> AddAdminAsync(ulong userId) => AddAsync(userId, Settings.AdminUserIds, s => s.AdminUserIds);
+
+    public Task<RemoveResult> RemoveAdminAsync(ulong userId) =>
+        RemoveAsync(userId, Settings.AdminUserIds, s => s.AdminUserIds);
+
+    /// <summary>Returns false if the user was already a moderator by user ID.</summary>
+    public Task<bool> AddModeratorAsync(ulong userId) =>
+        AddAsync(userId, Settings.ModeratorUserIds, s => s.ModeratorUserIds);
+
+    public Task<RemoveResult> RemoveModeratorAsync(ulong userId) =>
+        RemoveAsync(userId, Settings.ModeratorUserIds, s => s.ModeratorUserIds);
+
+    private async Task<bool> AddAsync(ulong userId, List<ulong> configIds, Func<BotState, List<ulong>> runtimeIds)
     {
-        if (Settings.AdminUserIds.Contains(userId) || await state.ReadAsync(s => s.AdminUserIds.Contains(userId)))
+        if (configIds.Contains(userId) || await state.ReadAsync(s => runtimeIds(s).Contains(userId)))
         {
             return false;
         }
 
-        await state.UpdateAsync(s => s.AdminUserIds.Add(userId));
+        await state.UpdateAsync(s => runtimeIds(s).Add(userId));
         return true;
     }
 
-    public async Task<AdminRemoveResult> RemoveAsync(ulong userId)
+    private async Task<RemoveResult> RemoveAsync(ulong userId, List<ulong> configIds, Func<BotState, List<ulong>> runtimeIds)
     {
-        if (await state.ReadAsync(s => s.AdminUserIds.Contains(userId)))
+        if (await state.ReadAsync(s => runtimeIds(s).Contains(userId)))
         {
-            await state.UpdateAsync(s => s.AdminUserIds.Remove(userId));
-            return AdminRemoveResult.Removed;
+            await state.UpdateAsync(s => runtimeIds(s).Remove(userId));
+            return RemoveResult.Removed;
         }
 
-        return Settings.AdminUserIds.Contains(userId) ? AdminRemoveResult.InConfig : AdminRemoveResult.NotAnAdmin;
+        return configIds.Contains(userId) ? RemoveResult.InConfig : RemoveResult.NotListed;
     }
 }

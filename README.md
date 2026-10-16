@@ -28,13 +28,17 @@ A Discord bot for monitoring SoftEther VPN hubs.
 
 `/game clear <hub>` - Stop showing a hub's game. (Moderator)
 
-Admins are the bot owner, `AdminUserIds`, members with an `AdminRoleIds` role, and users added with `/admin add`. Moderators are admins, `ModeratorUserIds` and members with a `ModeratorRoleIds` role.
+`/mod add|remove <user>` - Add or remove a moderator. (Admin)
+
+`/mod list` - List moderators. (Moderator)
+
+Admins are the bot owner, `AdminUserIds`, members with an `AdminRoleIds` role, and users added with `/admin add`. Moderators are admins, `ModeratorUserIds`, members with a `ModeratorRoleIds` role, and users added with `/mod add`.
 
 Commands are registered to `GuildId` only. Interactions from other guilds are ignored, so the token can be shared with other bots that are each isolated to their own guild.
 
 ## Config
 
-Copy `config.example.json` to `config.json` next to the binary. Runtime state (embed message, admins added with `/admin add`, paused state, hosted games) is kept in `state.json`.
+Copy `config.example.json` to `config.json` next to the binary. Runtime state (embed message, admins and moderators added with `/admin add` and `/mod add`, paused state, hosted games) is kept in `state.json`.
 
 `Token` - Your bot token.
 
@@ -54,9 +58,13 @@ Copy `config.example.json` to `config.json` next to the binary. Runtime state (e
 
 `AdminRoleIds` - Role IDs that can control the bot.
 
+`EnableRuntimeAdmins` - Allow `/admin add`. When off, admins added with it are ignored.
+
 `ModeratorUserIds` - User IDs that can use `/game`.
 
 `ModeratorRoleIds` - Role IDs that can use `/game`.
+
+`EnableRuntimeModerators` - Allow `/mod add`. When off, moderators added with it are ignored.
 
 `VpnServerIp` - SoftEther VPN server IP.
 
